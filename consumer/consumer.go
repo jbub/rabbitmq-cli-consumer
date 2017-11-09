@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"os"
 
+	"sync"
+
 	"github.com/jbub/rabbitmq-cli-consumer/config"
 	"github.com/jbub/rabbitmq-cli-consumer/handler"
 	"github.com/streadway/amqp"
@@ -121,26 +123,37 @@ func (c *Consumer) Consume() {
 
 	go ConnectionCloseHandler(closeErr, c)
 
+	var wg sync.WaitGroup
 	forever := make(chan bool)
 
 	go func() {
 		for d := range msgs {
-			if c.DebugLogger != nil {
-				c.DebugLogger.Printf("received message: %v", string(d.Body))
-			}
+			go func(wg *sync.WaitGroup, d amqp.Delivery) {
+				wg.Add(1)
+				defer wg.Done()
 
-			if err := c.MsgHandler.HandleMessage(d.Body); err != nil {
-				c.ErrLogger.Printf("could not handle message: %v", err)
-			}
-
-			if err := d.Ack(true); err != nil {
-				c.ErrLogger.Printf("could not acknowledge message: %v", err)
-			}
+				c.handleMsg(d)
+			}(&wg, d)
 		}
 	}()
 
 	c.InfLogger.Println("waiting for messages...")
 	<-forever
+	wg.Wait()
+}
+
+func (c *Consumer) handleMsg(d amqp.Delivery) {
+	if c.DebugLogger != nil {
+		c.DebugLogger.Printf("received message: %v", string(d.Body))
+	}
+
+	if err := c.MsgHandler.HandleMessage(d.Body); err != nil {
+		c.ErrLogger.Printf("could not handle message: %v", err)
+	}
+
+	if err := d.Ack(true); err != nil {
+		c.ErrLogger.Printf("could not acknowledge message: %v", err)
+	}
 }
 
 func sanitizeQueueArgs(cfg *config.Config) amqp.Table {
