@@ -37,9 +37,11 @@ func (h *HTTPMessagerHandler) HandleMessage(data []byte) error {
 		return fmt.Errorf("could not build http request: %v", err)
 	}
 
-	if _, err := h.client.Do(req); err != nil {
+	resp, err := h.client.Do(req)
+	if err != nil {
 		return fmt.Errorf("could not perform http request: %v", err)
 	}
+	defer resp.Body.Close()
 
 	h.infLogger.Printf("request sent, method=%v, url=%v, headers=%v", req.Method, req.URL.String(), req.Header)
 	return nil
