@@ -42,11 +42,9 @@ type Config struct {
 func LoadAndParse(location string) (*Config, error) {
 	if !filepath.IsAbs(location) {
 		location, err := filepath.Abs(location)
-
 		if err != nil {
 			return nil, err
 		}
-
 		location = location
 	}
 
@@ -54,6 +52,5 @@ func LoadAndParse(location string) (*Config, error) {
 	if err := gcfg.ReadFileInto(&cfg, location); err != nil {
 		return nil, err
 	}
-
 	return &cfg, nil
 }

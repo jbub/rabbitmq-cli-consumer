@@ -1,0 +1,5 @@
+.idea/
+.*DS_Store
+*.log
+*.conf
+rabbitmq-cli-consumer_*
