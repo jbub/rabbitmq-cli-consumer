@@ -43,7 +43,7 @@ func (h *HTTPMessagerHandler) HandleMessage(data []byte) error {
 	}
 	defer resp.Body.Close()
 
-	h.infLogger.Printf("request sent, method=%v, url=%v, headers=%v, status=%v", req.Method, req.URL.String(), req.Header, resp.Status)
+	h.infLogger.Printf("request sent, method=%v, url=%v, status=%v", req.Method, req.URL.String(), resp.Status)
 	return nil
 }
 
