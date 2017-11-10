@@ -1,12 +1,9 @@
 package consumer
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/url"
-	"os"
-
 	"sync"
 
 	"github.com/jbub/rabbitmq-cli-consumer/config"
@@ -28,35 +25,26 @@ func New(cfg *config.Config, msgHandler handler.MessageHandler, debugLogger *log
 		cfg.RabbitMq.Vhost,
 	)
 
-	infLogger.Println("connecting to RabbitMQ ...")
 	conn, err := amqp.Dial(uri)
 	if nil != err {
-		return nil, errors.New(fmt.Sprintf("failed connecting RabbitMQ: %s", err.Error()))
+		return nil, fmt.Errorf("failed connecting RabbitMQ: %v", err)
 	}
-	infLogger.Println("connected")
 
-	infLogger.Println("opening channel ...")
 	ch, err := conn.Channel()
 	if nil != err {
-		return nil, errors.New(fmt.Sprintf("failed to open a channel: %s", err.Error()))
+		return nil, fmt.Errorf("failed to open a channel: %v", err)
 	}
-	infLogger.Println("channel opened")
 
-	infLogger.Println("setting QoS ...")
 	// Attempt to preserve BC here
 	if cfg.Prefetch.Count == 0 {
 		cfg.Prefetch.Count = 3
 	}
 	if err := ch.Qos(cfg.Prefetch.Count, 0, cfg.Prefetch.Global); err != nil {
-		return nil, errors.New(fmt.Sprintf("failed to set QoS: %s", err.Error()))
+		return nil, fmt.Errorf("failed to set QoS: %v", err)
 	}
-	infLogger.Println("QoS set")
 
-	infLogger.Printf("declaring queue \"%s\"...", cfg.RabbitMq.Queue)
-	_, err = ch.QueueDeclare(cfg.RabbitMq.Queue, true, false, false, false, sanitizeQueueArgs(cfg))
-
-	if err != nil {
-		return nil, errors.New(fmt.Sprintf("failed to declare queue: %s", err.Error()))
+	if _, err := ch.QueueDeclare(cfg.RabbitMq.Queue, true, false, false, false, sanitizeQueueArgs(cfg)); err != nil {
+		return nil, fmt.Errorf("failed to declare queue: %v", err)
 	}
 
 	// Check for missing exchange settings to preserve BC
@@ -66,17 +54,13 @@ func New(cfg *config.Config, msgHandler handler.MessageHandler, debugLogger *log
 
 	// Empty Exchange name means default, no need to declare
 	if "" != cfg.Exchange.Name {
-		infLogger.Printf("declaring exchange \"%s\"...", cfg.Exchange.Name)
-		err = ch.ExchangeDeclare(cfg.Exchange.Name, cfg.Exchange.Type, cfg.Exchange.Durable, cfg.Exchange.Autodelete, false, false, amqp.Table{})
-		if err != nil {
-			return nil, errors.New(fmt.Sprintf("failed to declare exchange: %s", err.Error()))
+		if err := ch.ExchangeDeclare(cfg.Exchange.Name, cfg.Exchange.Type, cfg.Exchange.Durable, cfg.Exchange.Autodelete, false, false, amqp.Table{}); err != nil {
+			return nil, fmt.Errorf("failed to declare exchange: %v", err)
 		}
 
 		// Bind queue
-		infLogger.Printf("binding queue \"%s\" to exchange \"%s\"...", cfg.RabbitMq.Queue, cfg.Exchange.Name)
-		err = ch.QueueBind(cfg.RabbitMq.Queue, transformToStringValue(cfg.QueueSettings.Routingkey), transformToStringValue(cfg.Exchange.Name), false, nil)
-		if err != nil {
-			return nil, errors.New(fmt.Sprintf("failed to bind queue to exchange: %s", err.Error()))
+		if err := ch.QueueBind(cfg.RabbitMq.Queue, transformToStringValue(cfg.QueueSettings.Routingkey), transformToStringValue(cfg.Exchange.Name), false, nil); err != nil {
+			return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
 		}
 	}
 
@@ -104,16 +88,13 @@ type Consumer struct {
 func ConnectionCloseHandler(closeErr chan *amqp.Error, c *Consumer) {
 	err := <-closeErr
 	c.ErrLogger.Fatalf("connection closed: %v", err)
-	os.Exit(10)
 }
 
 func (c *Consumer) Consume() {
-	c.InfLogger.Println("registering consumer... ")
 	msgs, err := c.Channel.Consume(c.Queue, "", true, false, false, false, nil)
 	if err != nil {
 		c.ErrLogger.Fatalf("failed to register a consumer: %s", err)
 	}
-	c.InfLogger.Println("succeeded registering consumer.")
 
 	defer c.Connection.Close()
 	defer c.Channel.Close()

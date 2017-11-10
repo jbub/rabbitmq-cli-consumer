@@ -41,11 +41,11 @@ type Config struct {
 
 func LoadAndParse(location string) (*Config, error) {
 	if !filepath.IsAbs(location) {
-		location, err := filepath.Abs(location)
+		loc, err := filepath.Abs(location)
 		if err != nil {
 			return nil, err
 		}
-		location = location
+		location = loc
 	}
 
 	cfg := Config{}
