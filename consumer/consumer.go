@@ -109,7 +109,7 @@ func ConnectionCloseHandler(closeErr chan *amqp.Error, c *Consumer) {
 
 func (c *Consumer) Consume() {
 	c.InfLogger.Println("registering consumer... ")
-	msgs, err := c.Channel.Consume(c.Queue, "", false, false, false, false, nil)
+	msgs, err := c.Channel.Consume(c.Queue, "", true, false, false, false, nil)
 	if err != nil {
 		c.ErrLogger.Fatalf("failed to register a consumer: %s", err)
 	}
@@ -149,10 +149,6 @@ func (c *Consumer) handleMsg(d amqp.Delivery) {
 
 	if err := c.MsgHandler.HandleMessage(d.Body); err != nil {
 		c.ErrLogger.Printf("could not handle message: %v", err)
-	}
-
-	if err := d.Ack(true); err != nil {
-		c.ErrLogger.Printf("could not acknowledge message: %v", err)
 	}
 }
 
