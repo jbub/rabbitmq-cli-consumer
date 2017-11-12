@@ -33,6 +33,10 @@ type Config struct {
 		Type       string
 		Durable    bool
 	}
+	Workers struct {
+		Count int
+		Queue int
+	}
 	Logs struct {
 		Error string
 		Info  string

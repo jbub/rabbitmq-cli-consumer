@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"sync"
+
+	"time"
 
 	"github.com/jbub/rabbitmq-cli-consumer/config"
-	"github.com/jbub/rabbitmq-cli-consumer/handler"
+	"github.com/jbub/rabbitmq-cli-consumer/domain"
 	"github.com/streadway/amqp"
 )
 
@@ -15,7 +16,7 @@ const (
 	EmptyString = "<empty>"
 )
 
-func New(cfg *config.Config, msgHandler handler.MessageHandler, debugLogger *log.Logger, errLogger *log.Logger, infLogger *log.Logger) (*Consumer, error) {
+func New(cfg *config.Config, jb domain.JobBuilder, httpTimeout time.Duration, debugLogger *log.Logger, errLogger *log.Logger, infLogger *log.Logger) (*Consumer, error) {
 	uri := fmt.Sprintf(
 		"amqp://%s:%s@%s:%s%s",
 		url.QueryEscape(cfg.RabbitMq.Username),
@@ -65,10 +66,12 @@ func New(cfg *config.Config, msgHandler handler.MessageHandler, debugLogger *log
 	}
 
 	return &Consumer{
+		Cfg:         cfg,
 		Channel:     ch,
 		Connection:  conn,
 		Queue:       cfg.RabbitMq.Queue,
-		MsgHandler:  msgHandler,
+		JobBuilder:  jb,
+		HttpTimeout: httpTimeout,
 		DebugLogger: debugLogger,
 		ErrLogger:   errLogger,
 		InfLogger:   infLogger,
@@ -76,13 +79,15 @@ func New(cfg *config.Config, msgHandler handler.MessageHandler, debugLogger *log
 }
 
 type Consumer struct {
+	Cfg         *config.Config
 	Channel     *amqp.Channel
 	Connection  *amqp.Connection
 	Queue       string
 	DebugLogger *log.Logger
 	ErrLogger   *log.Logger
 	InfLogger   *log.Logger
-	MsgHandler  handler.MessageHandler
+	JobBuilder  domain.JobBuilder
+	HttpTimeout time.Duration
 }
 
 func ConnectionCloseHandler(closeErr chan *amqp.Error, c *Consumer) {
@@ -104,33 +109,31 @@ func (c *Consumer) Consume() {
 
 	go ConnectionCloseHandler(closeErr, c)
 
-	var wg sync.WaitGroup
+	c.InfLogger.Printf("using %v workers ...", c.Cfg.Workers.Count)
+	c.InfLogger.Printf("using worker queue of length %v ...", c.Cfg.Workers.Queue)
+	c.InfLogger.Printf("using http timeout %v ...", c.HttpTimeout)
+	c.InfLogger.Printf("waiting for messages ...")
+
+	pool := NewPool(c.Cfg.Workers.Count, c.Cfg.Workers.Queue, c.InfLogger, c.ErrLogger)
+	defer pool.Release()
+
 	forever := make(chan bool)
 
-	go func() {
-		for d := range msgs {
-			go func(wg *sync.WaitGroup, d amqp.Delivery) {
-				wg.Add(1)
-				defer wg.Done()
-
-				c.handleMsg(d)
-			}(&wg, d)
+	for d := range msgs {
+		if c.DebugLogger != nil {
+			c.DebugLogger.Printf("received message: %v", string(d.Body))
 		}
-	}()
 
-	c.InfLogger.Println("waiting for messages...")
+		job, err := c.JobBuilder.BuildJob(d.Body)
+		if err != nil {
+			c.ErrLogger.Printf("could not build job: %v", err)
+		}
+
+		pool.AddJob(job)
+	}
+
+	pool.WaitAll()
 	<-forever
-	wg.Wait()
-}
-
-func (c *Consumer) handleMsg(d amqp.Delivery) {
-	if c.DebugLogger != nil {
-		c.DebugLogger.Printf("received message: %v", string(d.Body))
-	}
-
-	if err := c.MsgHandler.HandleMessage(d.Body); err != nil {
-		c.ErrLogger.Printf("could not handle message: %v", err)
-	}
 }
 
 func sanitizeQueueArgs(cfg *config.Config) amqp.Table {

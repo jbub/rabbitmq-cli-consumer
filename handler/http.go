@@ -7,44 +7,80 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"sync"
 	"time"
+
+	"github.com/jbub/rabbitmq-cli-consumer/domain"
 )
 
-func NewHTTPMessagerHandler(timeout time.Duration, infLogger *log.Logger) *HTTPMessagerHandler {
-	client := &http.Client{
-		Timeout: timeout,
+type HTTPJob struct {
+	client *http.Client
+	req    *http.Request
+}
+
+func (hj *HTTPJob) Do(worker int, infLogger *log.Logger, errLogger *log.Logger) {
+	resp, err := hj.client.Do(hj.req)
+	if err != nil {
+		errLogger.Printf("could not perform http request: %v", err)
+		return
 	}
-	return &HTTPMessagerHandler{
-		client:    client,
+	defer resp.Body.Close()
+
+	infLogger.Printf("request sent, worker=%v, method=%v, url=%v, status=%v", worker, hj.req.Method, hj.req.URL.String(), resp.Status)
+}
+
+func NewHTTPJobBuilder(timeout time.Duration, infLogger *log.Logger) *HTTPJobBuilder {
+	return &HTTPJobBuilder{
+		client:    newHTTPClient(timeout),
 		infLogger: infLogger,
 	}
 }
 
-type HTTPMessagerHandler struct {
+func newHTTPClient(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{
+		Timeout: timeout,
+	}
+	trans := &http.Transport{
+		Dial:                dialer.Dial,
+		TLSHandshakeTimeout: timeout,
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: trans,
+	}
+}
+
+type HTTPJobBuilder struct {
 	client    *http.Client
 	infLogger *log.Logger
 }
 
-func (h *HTTPMessagerHandler) HandleMessage(data []byte) error {
-	msg, err := parseMessage(data)
-	if err != nil {
-		return fmt.Errorf("could not parse message: %v", err)
+func (h *HTTPJobBuilder) BuildJob(data []byte) (domain.Job, error) {
+	msg := httpMessagePool.Get().(*httpMessage)
+	defer httpMessagePool.Put(msg)
+
+	msg.reset()
+	if err := msg.parse(data); err != nil {
+		return nil, fmt.Errorf("could not parse message: %v", err)
 	}
 
 	req, err := buildRequest(msg)
 	if err != nil {
-		return fmt.Errorf("could not build http request: %v", err)
+		return nil, fmt.Errorf("could not build http request: %v", err)
 	}
 
-	resp, err := h.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("could not perform http request: %v", err)
-	}
-	defer resp.Body.Close()
+	return &HTTPJob{
+		client: h.client,
+		req:    req,
+	}, nil
+}
 
-	h.infLogger.Printf("request sent, method=%v, url=%v, status=%v", req.Method, req.URL.String(), resp.Status)
-	return nil
+var httpMessagePool = sync.Pool{
+	New: func() interface{} {
+		return &httpMessage{}
+	},
 }
 
 type httpMessage struct {
@@ -56,23 +92,30 @@ type httpMessage struct {
 	} `json:"request_params"`
 }
 
-func parseMessage(data []byte) (*httpMessage, error) {
+func (msg *httpMessage) parse(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 
-	msg := new(httpMessage)
 	if err := dec.Decode(msg); err != nil {
-		return nil, err
+		return err
 	}
 
 	if msg.RequestParams.Method == "" {
-		return nil, errors.New("empty http method")
+		return errors.New("empty http method")
 	}
 
 	if msg.RequestParams.URI == "" {
-		return nil, errors.New("empty http uri")
+		return errors.New("empty http uri")
 	}
-	return msg, nil
+
+	return nil
+}
+
+func (msg *httpMessage) reset() {
+	msg.RequestParams.URI = ""
+	msg.RequestParams.Headers = nil
+	msg.RequestParams.Body = nil
+	msg.RequestParams.Method = ""
 }
 
 func buildRequest(msg *httpMessage) (*http.Request, error) {

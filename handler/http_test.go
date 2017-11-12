@@ -21,8 +21,8 @@ const msgStr = `{"request_params":{
 "method":"POST"}}`
 
 func TestParseMessage(t *testing.T) {
-	msg, err := parseMessage([]byte(msgStr))
-	if err != nil {
+	msg := &httpMessage{}
+	if err := msg.parse([]byte(msgStr)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -56,8 +56,8 @@ func TestParseMessage(t *testing.T) {
 }
 
 func TestBuildRequest(t *testing.T) {
-	msg, err := parseMessage([]byte(msgStr))
-	if err != nil {
+	msg := &httpMessage{}
+	if err := msg.parse([]byte(msgStr)); err != nil {
 		t.Fatal(err)
 	}
 

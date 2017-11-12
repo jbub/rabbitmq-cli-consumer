@@ -35,7 +35,7 @@ func main() {
 		},
 		cli.DurationFlag{
 			Name:  "http-timeout, t",
-			Value: time.Second * 30,
+			Value: time.Second * 5,
 		},
 	}
 	app.Action = func(c *cli.Context) {
@@ -67,8 +67,8 @@ func main() {
 		}
 
 		httpTimeout := c.Duration("http-timeout")
-		msgHandler := handler.NewHTTPMessagerHandler(httpTimeout, infLogger)
-		cons, err := consumer.New(cfg, msgHandler, debugLogger, errLogger, infLogger)
+		jb := handler.NewHTTPJobBuilder(httpTimeout, infLogger)
+		cons, err := consumer.New(cfg, jb, httpTimeout, debugLogger, errLogger, infLogger)
 		if err != nil {
 			errLogger.Fatalf("failed creating consumer: %s", err)
 		}
