@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -87,7 +87,7 @@ type httpMessage struct {
 	RequestParams struct {
 		URI     string                 `json:"uri"`
 		Headers map[string]interface{} `json:"headers"`
-		Body    json.RawMessage        `json:"body"`
+		Body    string                 `json:"body"`
 		Method  string                 `json:"method"`
 	} `json:"request_params"`
 }
@@ -114,17 +114,12 @@ func (msg *httpMessage) parse(data []byte) error {
 func (msg *httpMessage) reset() {
 	msg.RequestParams.URI = ""
 	msg.RequestParams.Headers = nil
-	msg.RequestParams.Body = nil
+	msg.RequestParams.Body = ""
 	msg.RequestParams.Method = ""
 }
 
 func buildRequest(msg *httpMessage) (*http.Request, error) {
-	var body io.Reader
-	if msg.RequestParams.Body != nil {
-		body = bytes.NewReader(msg.RequestParams.Body)
-	}
-
-	req, err := http.NewRequest(msg.RequestParams.Method, msg.RequestParams.URI, body)
+	req, err := http.NewRequest(msg.RequestParams.Method, msg.RequestParams.URI, strings.NewReader(msg.RequestParams.Body))
 	if err != nil {
 		return nil, err
 	}
