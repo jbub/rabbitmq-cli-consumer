@@ -1,6 +1,8 @@
 package gcfg
 
 import (
+	"bytes"
+	"encoding"
 	"fmt"
 	"math/big"
 	"os"
@@ -49,7 +51,7 @@ func (u *unmarshalable) UnmarshalText(text []byte) error {
 	return nil
 }
 
-var _ textUnmarshaler = new(unmarshalable)
+var _ encoding.TextUnmarshaler = new(unmarshalable)
 
 type cUni struct {
 	X甲       cUniS1
@@ -124,6 +126,7 @@ var readtests = []struct {
 	{"[section]\nname=\"va\\\"lue\"", &cBasic{Section: cBasicS1{Name: "va\"lue"}}, true},
 	{"[section]\nname=\"va\\nlue\"", &cBasic{Section: cBasicS1{Name: "va\nlue"}}, true},
 	{"[section]\nname=\"va\\tlue\"", &cBasic{Section: cBasicS1{Name: "va\tlue"}}, true},
+	{"[section]\nname=\\\"value\\\"", &cBasic{Section: cBasicS1{Name: `"value"`}}, true},
 	{"\n[section]\nname=\\", &cBasic{}, false},
 	{"\n[section]\nname=\\a", &cBasic{}, false},
 	{"\n[section]\nname=\"val\\a\"", &cBasic{}, false},
@@ -169,10 +172,10 @@ var readtests = []struct {
 	{"\n[section]\nname=\"va ; lue\" ; cmnt", &cBasic{Section: cBasicS1{Name: "va ; lue"}}, true},
 	{"\n[section]\nname=; cmnt", &cBasic{Section: cBasicS1{Name: ""}}, true},
 }}, {"scanning:subsections", []readtest{
-	{"\n[sub \"A\"]\nname=value", &cSubs{map[string]*cSubsS1{"A": &cSubsS1{"value"}}}, true},
-	{"\n[sub \"b\"]\nname=value", &cSubs{map[string]*cSubsS1{"b": &cSubsS1{"value"}}}, true},
-	{"\n[sub \"A\\\\\"]\nname=value", &cSubs{map[string]*cSubsS1{"A\\": &cSubsS1{"value"}}}, true},
-	{"\n[sub \"A\\\"\"]\nname=value", &cSubs{map[string]*cSubsS1{"A\"": &cSubsS1{"value"}}}, true},
+	{"\n[sub \"A\"]\nname=value", &cSubs{map[string]*cSubsS1{"A": {"value"}}}, true},
+	{"\n[sub \"b\"]\nname=value", &cSubs{map[string]*cSubsS1{"b": {"value"}}}, true},
+	{"\n[sub \"A\\\\\"]\nname=value", &cSubs{map[string]*cSubsS1{"A\\": {"value"}}}, true},
+	{"\n[sub \"A\\\"\"]\nname=value", &cSubs{map[string]*cSubsS1{"A\"": {"value"}}}, true},
 }}, {"syntax", []readtest{
 	// invalid line
 	{"\n[section]\n=", &cBasic{}, false},
@@ -209,7 +212,7 @@ var readtests = []struct {
 	// name specified as struct tag
 	{"[tag-name]\nname=value", &cBasic{TagName: cBasicS1{Name: "value"}}, true},
 	// empty subsections
-	{"\n[sub \"A\"]\n[sub \"B\"]", &cSubs{map[string]*cSubsS1{"A": &cSubsS1{}, "B": &cSubsS1{}}}, true},
+	{"\n[sub \"A\"]\n[sub \"B\"]", &cSubs{map[string]*cSubsS1{"A": {}, "B": {}}}, true},
 }}, {"multivalue", []readtest{
 	// unnamed slice type: treat as multi-value
 	{"\n[m1]", &cMulti{M1: cMultiS1{}}, true},
@@ -337,6 +340,17 @@ func TestReadFileIntoUnicode(t *testing.T) {
 	}
 }
 
+func TestReadFileIntoNotepad(t *testing.T) {
+	res := &struct{ X甲 struct{ X乙 string } }{}
+	err := ReadFileInto(res, "testdata/notepad.ini")
+	if err != nil {
+		t.Error(err)
+	}
+	if "丁" != res.X甲.X乙 {
+		t.Errorf("got %q, wanted %q", res.X甲.X乙, "丁")
+	}
+}
+
 func TestReadStringIntoSubsectDefaults(t *testing.T) {
 	type subsect struct {
 		Color       string
@@ -374,5 +388,56 @@ func TestReadStringIntoExtraData(t *testing.T) {
 	}
 	if res.Section.Name != "value" {
 		t.Errorf("res.Section.Name=%q; want %q", res.Section.Name, "value")
+	}
+}
+
+var panictests = []struct {
+	id     string
+	config interface{}
+	gcfg   string
+}{
+	{"top", struct{}{}, "[section]\nname=value"},
+	{"section", &struct{ Section string }{}, "[section]\nname=value"},
+	{"subsection", &struct{ Section map[string]string }{}, "[section \"subsection\"]\nname=value"},
+}
+
+func testPanic(t *testing.T, id string, config interface{}, gcfg string) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Logf("%s pass: got panic %v", id, r)
+		}
+	}()
+	ReadStringInto(config, gcfg)
+	t.Errorf("%s fail: want panic", id)
+}
+
+func TestPanics(t *testing.T) {
+	for _, tt := range panictests {
+		testPanic(t, tt.id, tt.config, tt.gcfg)
+	}
+}
+
+var utf8bomtests = []struct {
+	id  string
+	in  []byte
+	out []byte
+}{
+	{"0 bytes input", []byte{}, []byte{}},
+	{"3 bytes input (BOM only)", []byte("\ufeff"), []byte{}},
+	{"3 bytes input (comment only, without BOM)", []byte(";c\n"), []byte(";c\n")},
+	{"normal input with BOM", []byte("\ufeff[section]\nname=value"), []byte("[section]\nname=value")},
+	{"normal input without BOM", []byte("[section]\nname=value"), []byte("[section]\nname=value")},
+}
+
+func testUtf8Bom(t *testing.T, id string, in, out []byte) {
+	got := skipLeadingUtf8Bom([]byte(in))
+	if !bytes.Equal(got, out) {
+		t.Errorf("%s.", id)
+	}
+}
+
+func TestUtf8Boms(t *testing.T) {
+	for _, tt := range utf8bomtests {
+		testUtf8Bom(t, tt.id, tt.in, tt.out)
 	}
 }

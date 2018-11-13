@@ -129,7 +129,7 @@ func TestParseMessage(t *testing.T) {
 		t.Fatalf("invalid uri, got %v, want %v", msg.RequestParams.URI, expURI)
 	}
 
-	body := `{\"from\":\"jano\",\"to\":\"palo\"}`
+	body := `{"from":"jano","to":"palo"}`
 	bodyStr := string(msg.RequestParams.Body)
 	if bodyStr != body {
 		t.Fatalf("invalid body, got %v, want %v", bodyStr, body)
@@ -179,7 +179,7 @@ X-Php-Ob-Level: 1
 X-User-Scope: cdasf
 X-User-Uuid: xxxdddsa-bdf7-4382-8cc4-351367c39e48
 
-"{\"from\":\"jano\",\"to\":\"palo\"}`
+{"from":"jano","to":"palo"}`
 	dataStr := string(reqData)
 
 	wantSplit := strings.Split(want, "\n")

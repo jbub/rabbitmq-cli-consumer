@@ -2,32 +2,49 @@
 
 
 [[projects]]
+  digest = "1:e85837cb04b78f61688c6eba93ea9d14f60d611e2aaf8319999b1a60d2dafbfa"
   name = "github.com/codegangsta/cli"
   packages = ["."]
+  pruneopts = ""
   revision = "cfb38830724cc34fedffe9a2a29fb54fa9169cd1"
   version = "v1.20.0"
 
 [[projects]]
   branch = "master"
+  digest = "1:4837ae00a10e327fb6a0c72b6bade6af7581c6bfaf920e5e608e50e9c8eaed9c"
   name = "github.com/streadway/amqp"
   packages = ["."]
-  revision = "ff791c2d22d3f1588b4e2cc71a9fba5e1da90654"
+  pruneopts = ""
+  revision = "27835f1a64e97101d95306211f03c0620ffa295d"
 
 [[projects]]
+  digest = "1:bb864e9881b2c241fc6348ba5ed57e6ccf8a675903f1f5c3d81c1b3d7cc4b8f8"
   name = "gopkg.in/gcfg.v1"
-  packages = [".","scanner","token","types"]
-  revision = "298b7a6a3838f79debfaee8bd3bfb2b8d779e756"
-  version = "v1.2.1"
+  packages = [
+    ".",
+    "scanner",
+    "token",
+    "types",
+  ]
+  pruneopts = ""
+  revision = "61b2c08bc8f6068f7c5ca684372f9a6cb1c45ebe"
+  version = "v1.2.3"
 
 [[projects]]
+  digest = "1:ceec7e96590fb8168f36df4795fefe17051d4b0c2acc7ec4e260d8138c4dafac"
   name = "gopkg.in/warnings.v0"
   packages = ["."]
-  revision = "8a331561fe74dadba6edfc59f3be66c22c3b065d"
-  version = "v0.1.1"
+  pruneopts = ""
+  revision = "ec4a0fea49c7b46c2aeb0b51aac55779c607e52b"
+  version = "v0.1.2"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "dfa09af5e39eb1481e11f3fca6d3b5589b4cb04e08c97b622dbc8f2f0f07087c"
+  input-imports = [
+    "github.com/codegangsta/cli",
+    "github.com/streadway/amqp",
+    "gopkg.in/gcfg.v1",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1
